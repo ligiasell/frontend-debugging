@@ -1,0 +1,82 @@
+name: Create a release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+
+    strategy:
+      matrix:
+        node-version: [12.x]
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: |
+          npm install -g conventional-recommended-bump@^6.0.9
+          npm install -g conventional-changelog-cli@^2.0.34
+          npm install -g conventional-changelog-angular@^5.0.10
+          npm install -g conventional-github-releaser@^3.1.5
+          npm install -g semver@^7.3.2
+
+      - name: Create changelog
+        run: |
+          getNextTag()
+          {
+            local  __resultvar=$1
+            local lastTag
+            lastTag="$(git describe --tags $(git rev-list --tags --max-count=1))"
+            local exitCode=$?
+            if [ $exitCode = "128" ]; then
+              lastTag="v0.0.0"
+            fi
+            local bump=$(conventional-recommended-bump -p angular -v  | head -n 1)
+            local newVersion="v$(semver -i $bump $lastTag)"
+            if [[ $newVersion = "v" ]]; then
+              newVersion="v1.0.0"
+            fi
+            if [[ "$__resultvar" ]]; then
+              eval $__resultvar="'$newVersion'"
+            else
+              echo "$newVersion"
+            fi
+          }
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          conventional-changelog -p angular -i CHANGELOG.md -s && git add CHANGELOG.md && git commit -m 'docs: Update changelog file'
+          git tag $(getNextTag)
+
+      - name: Push changes to master
+        uses: ad-m/github-push-action@master
+        with:
+          branch: master
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tags: true
+
+      - name: Release
+        run: conventional-github-releaser -p angular
+        env:
+          CONVENTIONAL_GITHUB_RELEASER_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Pull Request to dev
+        uses: repo-sync/pull-request@v2
+        with:
+          source_branch: 'master'
+          destination_branch: 'dev'
+          pr_title: 'Release `git describe --tags $(git rev-list --tags --max-count=1)`'
+          pr_body: '**Automated PR from release**'
+          github_token: ${{ secrets.GITHUB_TOKEN }}

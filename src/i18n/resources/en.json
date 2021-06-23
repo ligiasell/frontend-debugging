@@ -1,0 +1,7 @@
+{
+  "translation": {
+    "carEvaluation": "The {{brand}} {{model}} {{year}} - {{fuel}} (FIPE {{fipe}}) was evaluated at {{value}}",
+    "loading": "Loading...",
+    "pageNotFound": "404 - Page Not Found"
+  }
+}

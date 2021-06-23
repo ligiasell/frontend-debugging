@@ -1,0 +1,83 @@
+# Javascript Node CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-javascript/ for more details
+#
+defaults: &defaults
+  working_directory: ~/repo
+  docker:
+    - image: circleci/node:12.16.1
+
+version: 2
+jobs:
+  pre-build:
+    <<: *defaults
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "yarn.lock" }}
+            - v1-dependencies-
+      - run: yarn install
+      - save_cache:
+          paths:
+            - node_modules
+          key: v1-dependencies-{{ checksum "yarn.lock" }}
+      - persist_to_workspace:
+          root: ./
+          paths:
+            - ./
+      - run: yarn stylelint
+      - run: yarn eslint
+      - run: yarn test
+  deploy_staging:
+    <<: *defaults
+    steps:
+      - checkout
+      - setup_remote_docker
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "yarn.lock" }}
+      - run: sudo apt-get update && sudo apt-get install -y python-dev
+      - run: sudo apt update && sudo apt install python-pip
+      - run: sudo pip install awscli --upgrade
+      - run: yarn build
+      - run: aws s3 sync build/ s3://$REACT_S3_BUCKET_STAGING --delete --cache-control "public, max-age=604800"
+      - run: aws cloudfront create-invalidation --paths '/*' --distribution-id $AWS_DISTRIBUTION_ID_STAGING
+  deploy_production:
+    <<: *defaults
+    steps:
+      - checkout
+      - setup_remote_docker
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "yarn.lock" }}
+      - run: sudo apt-get update && sudo apt-get install -y python-dev
+      - run: sudo apt update && sudo apt install python-pip
+      - run: sudo pip install awscli --upgrade
+      - run: yarn build
+      - run: aws s3 sync build/ s3://$REACT_S3_BUCKET_PRODUCTION --delete --cache-control "public, max-age=604800"
+      - run: aws cloudfront create-invalidation --paths '/*' --distribution-id $AWS_DISTRIBUTION_ID_PRODUCTION
+
+workflows:
+  version: 2
+  main_workflow:
+    jobs:
+      - pre-build:
+          filters:
+            tags:
+              only: /v[0-9]+(\.[0-9]+)*/
+      - deploy_staging:
+          filters:
+            branches:
+              only:
+                - staging
+          requires:
+            - pre-build
+      - deploy_production:
+          filters:
+            tags:
+              only: /v[0-9]+(\.[0-9]+)*/
+            branches:
+              ignore: /.*/
+          requires:
+            - pre-build
