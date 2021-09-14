@@ -5,7 +5,7 @@ import { render } from 'react-dom'
 import { Provider } from 'react-redux'
 import { ThemeProvider } from '@material-ui/styles'
 
-import { theme } from '_utils/material-ui'
+import theme from '_utils/material-ui'
 
 import './bootstrap'
 import configureStore from './store/configure-store'
